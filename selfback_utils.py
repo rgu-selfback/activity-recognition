@@ -1,3 +1,4 @@
+
 from __future__ import division
 import os
 import pandas as pd
@@ -12,7 +13,7 @@ import math
 
 feats = ['sum_x', 'sum_y', 'sum_z', 'sum_m', 'mean_x', 'mean_y', 'mean_z', 'mean_m', 'sd_x', 'sd_y', 'sd_z', 'sd_m', 'iqr_x', 'iqr_y', 'iqr_z', 'iqr_m', 'p10_x', 'p25_x', 'p50_x', 'p75_x', 'p90_x', 'p10_y', 'p25_y', 'p50_y', 'p75_y', 'p90_y', 'p10_z', 'p25_z', 'p50_z', 'p75_z', 'p90_z', 'p10_m', 'p25_m', 'p50_m', 'p75_m', 'p90_m', 'p2p_x', 'p2p_y', 'p2p_z', 'p2p_m', 'pw_x', 'pw_y', 'pw_z', 'pw_m', 'lpw_x', 'lpw_y', 'lpw_z', 'lpw_m', 'acorr_x', 'acorr_y', 'acorr_z', 'acorr_m', 'kurt_x', 'kurt_y', 'kurt_z', 'kurt_m', 'skw_x', 'skw_y', 'skw_z', 'skw_m', 'corr_xy', 'corr_xz', 'corr_yz', 'mcross_x', 'mcross_y', 'mcross_z', 'mcross_m', 'energy_xyz', 'rsm_x', 'rsm_y', 'rsm_z', 'rsm_m', 'max_x', 'max_y', 'max_z', 'max_m', 'min_x', 'min_y', 'min_z', 'min_m', 'mad_x', 'mad_y', 'mad_z', 'mad_m']
 features = pd.Series(feats)
-_label_map = {'standing': 'sedentary', 'sitting':'sedentary', 'lying':'sedentary', 'jogging':'running', 'walk_slow':'walking', 'walk_mod':'walking', 'walk_fast':'walking', 'upstairs':'stairs', 'downstairs': 'stairs'} 
+_label_map = {'standing': 'standing', 'sitting':'sedentary', 'lying':'sedentary', 'jogging':'running', 'walk_slow':'walking', 'walk_mod':'walking', 'walk_fast':'walking', 'upstairs':'stairs', 'downstairs': 'stairs'} 
 
 def find_claps(x):
     #print len(x)
@@ -55,26 +56,29 @@ def read_train_data(path):
     person_data = {}
     classes = os.listdir(path)
    
-    for _class in classes:        
-        files = os.listdir(path+_class)
-        for f in files:
-            p = f[:f.index('_')]
-            #print p
-            if f.endswith('.csv'):
-                df = pd.read_csv(path+_class+'/'+f, header=0)
-                #print df.head()                  
-                df['class'] = _class                    
-                #print p
-                #print '\t' + _class + ' ' + str(len(df))
-                #print '\n'
-                activity_data = {}
-                if p in person_data:
-                    activity_data = person_data[p] 
-                    if _class in activity_data:
-                        df = activity_data[_class].append(df)
-                activity_data[_class] = df
-                #print '\t'+ str(activity_data)
-                person_data[p] = activity_data
+    for _class in classes: 
+	if os.path.isdir(path+_class):       
+		files = os.listdir(path+_class)
+		for f in files:
+		    p = f[:f.index('.')]
+		    if '_' in f:
+		    	p = f[:f.index('_')]
+		    #print p
+		    if f.endswith('.csv'):
+		        df = pd.read_csv(path+_class+'/'+f, header=0)
+		        #print df.head()                  
+		        df['class'] = _class                    
+		        #print p
+		        #print '\t' + _class + ' ' + str(len(df))
+		        #print '\n'
+		        activity_data = {}
+		        if p in person_data:
+		            activity_data = person_data[p] 
+		            if _class in activity_data:
+		                df = activity_data[_class].append(df)
+		        activity_data[_class] = df
+		        #print '\t'+ str(activity_data)
+		        person_data[p] = activity_data
     return person_data  
     
     
@@ -92,19 +96,35 @@ def mean(x):
     return np.mean(x)
 
 def sd(x):
-    return np.std(x)
+    y = np.std(x)
+    if not is_valid_num(y):
+	print 'sd: %f'%y
+    return y
 
 def iqr(x):
-    return np.subtract(*np.percentile(x,[75,25]))
+    y = np.subtract(*np.percentile(x,[75,25]))
+    if not is_valid_num(y):
+	print 'iqr: %f'%y
+    return y
+
     
 def percentile(x, p):
-    return np.percentile(x, p)
+    y = np.percentile(x, p)
+    if np.isnan(y).any() or np.isinf(y).any():
+	print 'perc: '+str(np.argwhere(np.isnan(y)))
+    return y
 
 def peak2peak_amp(x):
-    return np.max(x) - np.min(x)
+    y = np.max(x) - np.min(x)
+    if not is_valid_num(y):
+ 	print 'peak2peak: %f'%y
+    return y
 
 def power(x):
-    return np.sum(np.square(x))
+    y = np.sum(np.square(x))
+    if not is_valid_num(y):
+ 	print 'power: %f'%y
+    return y
     
 def log_power(x):
     printed = False
@@ -115,6 +135,8 @@ def log_power(x):
         if 0 in x:
             print x
             printed = True
+    if not is_valid_num(log_power):
+	print 'log_power: %f'%log_power
     return log_power
 
 def lag_one_autocorr(x, m=None):
@@ -126,20 +148,32 @@ def lag_one_autocorr(x, m=None):
         num += (x[i] - m) * (x[i+1] - m)
         i += 1
     denom = np.sum(np.square(np.subtract(x,m)))
-    return num/denom
+    if denom > 0:
+   	 return num/denom
+    else:
+	return 0
 
 def kurtosis(x):
-    return stats.kurtosis(x)
+    y = stats.kurtosis(x)
+    if not is_valid_num(y):
+	print 'kurt: %f'%y
+    return y
 
 def skewness(x, m=None):
     if m is None:
         m = np.mean(x)
     num = np.sum(np.power(np.subtract(x,m),3))/len(x)
     denom = np.power(np.sqrt(np.sum(np.square(np.subtract(x,m)))/(len(x)-1)), 3)
-    return num/denom
+    if denom > 0:
+    	return num/denom
+    else:
+	return 0
 
 def corr(a,b):  
-    return np.corrcoef(a,b)[0,1]
+    y = np.corrcoef(a,b)[0,1]
+    if not is_valid_num(y):
+	print 'corr: %f'%y
+    return y
 
 def zero_cross(x):
     count = 0
@@ -151,7 +185,10 @@ def zero_cross(x):
             last_sign = np.sign(x[i])
             count +=1
         i+=1
+    if not is_valid_num(count):
+	print 'zero cross: %f'%count
     return count
+    
 
 def median_cross(x, m=None):
     if m is None:
@@ -192,11 +229,17 @@ def energy(x, y, z):
     return e
     
 def root_square_mean(x):
-    return np.sqrt(np.mean(np.square(x)))
+    y = np.sqrt(np.mean(np.square(x)))
+    if not is_valid_num(y):
+	print 'rms: %f'%y
+    return y
     
 def mean_abs_dev(x):
     m = np.mean(x)
-    return np.mean(np.subtract(x, m))
+    y = np.mean(np.subtract(x, m))
+    if not is_valid_num(y):
+	print 'mean_abs_dev: %f'%y
+    return y
     
 def spec_centroid(x):
     i = range(x)
@@ -250,10 +293,12 @@ def get_freq_features(tw):
     fftx = np.add(np.abs(np.real(np.fft.fft(x))), mf)
     ffty = np.add(np.abs(np.real(np.fft.fft(y))), mf)
     fftz = np.add(np.abs(np.real(np.fft.fft(z))), mf)
+    fftm = np.add(np.abs(np.real(np.fft.fft(m))), mf)
     
     fftx = fftx[0:int(len(fftx)/2)]
     ffty = ffty[0:int(len(ffty)/2)]
     fftz = fftz[0:int(len(fftz)/2)]    
+    fftm = fftm[0:int(len(fftm)/2)]
     
     #print fftx
     #print '\n'
@@ -264,151 +309,235 @@ def get_freq_features(tw):
     #features.append(sum(fftx))
     #features.append(sum(ffty))
     #features.append(sum(fftz))
+    #features.append(sum(fftm))
     
     features.append(mean(fftx))
     features.append(mean(ffty))
     features.append(mean(fftz))
+    features.append(mean(fftm))
     
     features.append(sd(fftx))
     features.append(sd(ffty))
     features.append(sd(fftz))
+    features.append(sd(fftm))
     
     features.append(np.max(fftx))
     features.append(np.max(ffty))
     features.append(np.max(fftz))
+    features.append(np.max(fftm))
     
     features.append(np.median(fftx))
     features.append(np.median(ffty))
-    features.append(np.median(fftz))    
+    features.append(np.median(fftz))
+    features.append(np.median(fftm))    
     
     features.append(spec_entropy(fftx))
     features.append(spec_entropy(ffty))
     features.append(spec_entropy(fftz))
+    features.append(spec_entropy(fftm))
     
     return features
     
-def get_time_features(tw, indx):
+def get_time_features(tw):
     features = []
-    x = tw['x'].values
-    y = tw['y'].values
-    z = tw['z'].values 
+    x = tw['x'].values+0.001
+    y = tw['y'].values+0.001
+    z = tw['z'].values+0.001
     m = mag(x,y,z) 
         
     ax = x[int(len(x)/2)]
     ay = y[int(len(y)/2)]
     az = z[int(len(z)/2)]    
     
-    if indx == 0:
-        features.append(sum(x)) #1
-        features.append(sum(y)) #2
-        features.append(sum(z)) #3
-        features.append(sum(m))    
-    elif indx == 1:
-        features.append(mean(x)) #4
-        features.append(mean(y)) #5
-        features.append(mean(z)) #6
-        features.append(mean(m))     
-    elif indx == 2:
-        features.append(sd(x)) #7
-        features.append(sd(y)) #8 H
-        features.append(sd(z)) #9
-        features.append(sd(m)) 
-    elif indx == 3:
-        features.append(iqr(x)) #10
-        features.append(iqr(y)) #11 H
-        features.append(iqr(z)) #12
-        features.append(iqr(m)) 
-    elif indx == 4:
-        features.extend(percentile(x, [10,25,50,75,90])) #13 - 17
-        features.extend(percentile(y, [10,25,50,75,90])) #18 - 22
-        features.extend(percentile(z, [10,25,50,75,90])) #23 - 27
-        features.extend(percentile(m, [10,25,50,75,90]))
-    elif indx == 5:
-        features.append(peak2peak_amp(x)) #28
-        features.append(peak2peak_amp(y)) #29 
-        features.append(peak2peak_amp(z)) #30
-        features.append(peak2peak_amp(m)) 
-    elif indx == 6:
-        features.append(power(x)) #31
-        features.append(power(y)) #32 H
-        features.append(power(z)) #33
-        features.append(power(m))
-    elif indx == 7:
-        features.append(log_power(x)) #34
-        features.append(log_power(y)) #35 H
-        features.append(log_power(z)) #36
-        features.append(log_power(m))
-    elif indx == 8:
-        features.append(lag_one_autocorr(x)) #37
-        features.append(lag_one_autocorr(y)) #38
-        features.append(lag_one_autocorr(z)) #39 H
-        features.append(lag_one_autocorr(m))
-    elif indx == 9:
-        features.append(kurtosis(x)) #40
-        features.append(kurtosis(y)) #41
-        features.append(kurtosis(z)) #42
-        features.append(kurtosis(m))
-    elif indx == 10:
-        features.append(skewness(x)) #43
-        features.append(skewness(y)) #44
-        features.append(skewness(z)) #45
-        features.append(skewness(m))
-    elif indx == 11:
-        features.append(corr(x,y)) #46
-        features.append(corr(x,z)) #47
-        features.append(corr(y,z)) #48 H
-    elif indx == 12:
-        features.append(zero_cross(x)) #49
-        features.append(zero_cross(y)) #50 H
-        features.append(zero_cross(z)) #51
-        features.append(zero_cross(m))
-    elif indx == 13:
-        features.append(energy(x,y, z))
-    elif indx == 14:
-        features.append(root_square_mean(x))
-        features.append(root_square_mean(y))
-        features.append(root_square_mean(z))
-        features.append(root_square_mean(m))
-    elif indx == 15:
-        features.append(np.max(x))
-        features.append(np.max(y))
-        features.append(np.max(z))
-        features.append(np.max(m))
-    elif indx == 16:
-        features.append(np.min(x))
-        features.append(np.min(y))
-        features.append(np.min(z))        
-        features.append(np.min(m))
-    elif indx == 17:
-        features.append(mean_abs_dev(x))
-        features.append(mean_abs_dev(y))
-        features.append(mean_abs_dev(z))
-        features.append(mean_abs_dev(m))
-    elif indx == 18:
-        features.append(rho(ax, ay, az))
-        features.append(phi(ax, ay, az))
-        features.append(theta(ax, ay, az))
+    #if indx == 0:
+     
+    features.append(sum(x)) #0
+    features.append(sum(y)) #1
+    features.append(sum(z)) #2
+    features.append(sum(m)) #3 
+    #elif indx == 1:
+    features.append(mean(x)) #4
+    features.append(mean(y)) #5
+    features.append(mean(z)) #6
+    features.append(mean(m)) #7    
+    #elif indx == 2:
+    features.append(sd(x)) #8
+    features.append(sd(y)) #9 H
+    features.append(sd(z)) #10
+    features.append(sd(m)) #11
+    #elif indx == 3:
+    features.append(iqr(x)) #12
+    features.append(iqr(y)) #13 H
+    features.append(iqr(z)) #14
+    features.append(iqr(m)) #15
+    #elif indx == 4:
+    features.extend(percentile(x, [10,25,50,75,90])) #13 - 17
+    features.extend(percentile(y, [10,25,50,75,90])) #18 - 22
+    features.extend(percentile(z, [10,25,50,75,90])) #23 - 27
+    features.extend(percentile(m, [10,25,50,75,90]))
+    #elif indx == 5:
+    features.append(peak2peak_amp(x)) #28
+    features.append(peak2peak_amp(y)) #29 
+    features.append(peak2peak_amp(z)) #30
+    features.append(peak2peak_amp(m)) 
+    #elif indx == 6:
+    features.append(power(x)) #31
+    features.append(power(y)) #32 H
+    features.append(power(z)) #33
+    features.append(power(m))
+    #elif indx == 7:
+    features.append(log_power(x)) #34
+    features.append(log_power(y)) #35 H
+    features.append(log_power(z)) #36
+    features.append(log_power(m))
+    #elif indx == 8:
+    features.append(lag_one_autocorr(x)) #37
+    features.append(lag_one_autocorr(y)) #38
+    features.append(lag_one_autocorr(z)) #39 H
+    features.append(lag_one_autocorr(m))
+    #elif indx == 9:
+    features.append(kurtosis(x)) #40
+    features.append(kurtosis(y)) #41
+    features.append(kurtosis(z)) #42
+    features.append(kurtosis(m))
+    #elif indx == 10:
+    features.append(skewness(x)) #43
+    features.append(skewness(y)) #44
+    features.append(skewness(z)) #45
+    features.append(skewness(m))
+    #elif indx == 11:
+    #features.append(corr(x,y)) #46
+    #features.append(corr(x,z)) #47
+    #features.append(corr(y,z)) #48 H
+    #elif indx == 12:
+    features.append(zero_cross(x)) #49
+    features.append(zero_cross(y)) #50 H
+    features.append(zero_cross(z)) #51
+    features.append(zero_cross(m))
+    #elif indx == 13:
+    features.append(energy(x,y, z))
+    #elif indx == 14:
+    features.append(root_square_mean(x))
+    features.append(root_square_mean(y))
+    features.append(root_square_mean(z))
+    features.append(root_square_mean(m))
+    #elif indx == 15:
+    features.append(np.max(x))
+    features.append(np.max(y))
+    features.append(np.max(z))
+    features.append(np.max(m))
+    #elif indx == 16:
+    features.append(np.min(x))
+    features.append(np.min(y))
+    features.append(np.min(z))        
+    features.append(np.min(m))
+    #elif indx == 17:
+    features.append(mean_abs_dev(x))
+    features.append(mean_abs_dev(y))
+    features.append(mean_abs_dev(z))
+    features.append(mean_abs_dev(m))
+    #elif indx == 18:
+    #features.append(rho(ax, ay, az))
+    #features.append(phi(ax, ay, az))
+    #features.append(theta(ax, ay, az))
     
     return features
 
-def extract_features(time_windows):   
+def extract_raw_features(time_windows, class_attr, n_comps=None):   
     data = []
-    _class = []
+    y = []
+    #print len(time_windows)  
+    l = len(time_windows[0]) 
+    for tw in time_windows:
+	#print tw.columns.values.tolist()
+	if tw.shape[0] == l:		
+	    features = []   
+	    features.extend(tw['x'].values) 
+	    features.extend(tw['y'].values) 
+	    features.extend(tw['z'].values)          
+	    #print features
+	    data.append(features)        
+            y.append(tw[class_attr].iloc[0])
+    #print len(data)
+    #print type(data[0])
+    X = np.array(data)
+    print 'dim: '
+    print X.shape
+    return X, y
+
+def is_valid_num(x):
+    if not np.isnan(x) and not np.isinf(x):
+	return True
+    else:
+	return False
+
+
+def extract_3d_raw_features(time_windows, feat_len, class_attr, gyro=False, n_comps=None):   
+    data = []
+    y = []
     #print len(time_windows)   
     for tw in time_windows:
-        features = []
-        
-        #features.extend(get_freq_features(tw))
-        
-        features.extend(get_time_features(tw))        
-        
-        data.append(features)     
-        
-        _class.append(tw['class'].iloc[0])
+	#print tw.columns.values.tolist()
+	if tw.shape[0] == feat_len:		
+	    features = []   
+	    features.append(tw['x'].values) 
+	    features.append(tw['y'].values) 
+	    features.append(tw['z'].values) 
+	    if gyro:
+		features.append(tw['gx'].values) 
+	    	features.append(tw['gy'].values) 
+	    	features.append(tw['gz'].values) 
+	    #features.append(mag(tw['x'].values,tw['y'].values,tw['z'].values))       
+	    #print features
+	    data.append(features)        
+            y.append(tw[class_attr].iloc[0])
+    #print len(data)
+    #print type(data[0])
+    X = np.array(data)
+    print 'dim: '
+    print X.shape
+    return X, y
 
-    data_set = np.array(data)
- 
-    return data_set, _class
+
+def extract_time_features(time_windows, class_attr, n_comps=None):   
+    data = []
+    _class = []
+    l = len(time_windows[0])
+    for tw in time_windows:
+	if tw.shape[0] == l:
+		features = []
+		features.extend(get_time_features(tw))
+	    	data.append(features)
+	    	if class_attr is not None:
+	    	    _class.append(tw[class_attr].iloc[0])
+    dataset = np.array(data, dtype=np.float32)
+    if class_attr is not None:
+    	return dataset, _class
+    else:
+	return dataset    
+
+
+
+def extract_freq_features(time_windows, class_attr, n_comps=None):   
+    data = []
+    _class = []
+    l = len(time_windows[0])   
+    for tw in time_windows:
+	if tw.shape[0] == l:
+        	features = []       
+		features.extend(get_freq_features(tw))       
+		data.append(features)     
+		if class_attr is not None:
+	       	     _class.append(tw[class_attr].iloc[0])
+
+    data_set = np.array(data, dtype=np.float32)
+    print "indices of nan: "
+    print np.argwhere(np.isnan(data_set))
+    
+    if class_attr is not None: 	
+    	return data_set, _class
+    else:
+	return data_set
     
 def extract_features2(time_windows, feautures):
     data = []
@@ -429,31 +558,48 @@ def extract_features2(time_windows, feautures):
     return data_set, _class
 
 
-def extract_dct_features(time_windows, class_attr=None, n_comps=48):
+def extract_dct_features(time_windows, class_attr=None, n_comps=48, gyro=False):
     X_matrix = []
     y_vect = None
     if class_attr is not None:
         y_vect = []
+    l = len(time_windows[0])
+    for tw in time_windows:   
+	if tw.shape[0] == l:     
+		x = tw['x'].values
+		y = tw['y'].values
+		z = tw['z'].values
+		#m = mag(x,y,z)
+	
+		dct_x = np.abs(fftpack.dct(x))
+		dct_y = np.abs(fftpack.dct(y))
+		dct_z = np.abs(fftpack.dct(z))
+		#dct_m = np.abs(fftpack.dct(m))
+	
+		v = np.array([])       
+		v = np.concatenate((v, dct_x[:n_comps]))            
+		v = np.concatenate((v, dct_y[:n_comps]))
+		v = np.concatenate((v, dct_z[:n_comps]))
+		#v = np.concatenate((v, dct_m[:n_comps])) 
 
-    for tw in time_windows:        
-        x = tw['x'].values
-        y = tw['y'].values
-        z = tw['z'].values
-        m = mag(x,y,z)
-        
-        dct_x = np.abs(fftpack.dct(x))
-        dct_y = np.abs(fftpack.dct(y))
-        dct_z = np.abs(fftpack.dct(z))
-        dct_m = np.abs(fftpack.dct(m))
-        
-        v = np.array([])       
-        v = np.concatenate((v, dct_x[:n_comps]))            
-        v = np.concatenate((v, dct_y[:n_comps]))
-        v = np.concatenate((v, dct_z[:n_comps]))
-        v = np.concatenate((v, dct_m[:n_comps]))       
-        X_matrix.append(v)
-        if y_vect is not None:
-            y_vect.append(tw[class_attr].iloc[0])       
+		if gyro:
+		    gx = tw['gx'].values
+		    gy = tw['gy'].values
+		    gz = tw['gz'].values
+	      	    gm = mag(gx, gy, gz)
+		    dct_gx = np.abs(fftpack.dct(gx))
+		    dct_gy = np.abs(fftpack.dct(gy))
+		    dct_gz = np.abs(fftpack.dct(gz))
+		    dct_gm = np.abs(fftpack.dct(gm))
+
+		    v = np.concatenate((v, dct_gx[:n_comps]))            
+		    v = np.concatenate((v, dct_gy[:n_comps]))
+		    v = np.concatenate((v, dct_gz[:n_comps]))
+		    #v = np.concatenate((v, dct_m[:n_comps]))
+	      
+		X_matrix.append(v)
+		if y_vect is not None:
+		    y_vect.append(tw[class_attr].iloc[0])       
     
     X_matrix = np.array(X_matrix) 
            
@@ -461,6 +607,87 @@ def extract_dct_features(time_windows, class_attr=None, n_comps=48):
         return X_matrix
     else:
         return X_matrix, y_vect
+
+
+
+
+
+def extract_3d_dct_features(time_windows, feat_len, class_attr=None, n_comps=None):
+    X_matrix = []
+    y_vect = None
+    if class_attr is not None:
+        y_vect = []
+
+    for tw in time_windows: 
+	if tw.shape[0] == feat_len:      
+		x = tw['x'].values
+		y = tw['y'].values
+		z = tw['z'].values
+		m = mag(x,y,z)
+		dim = len(x)
+		if n_comps is not None:
+ 			dim = n_comps
+		
+		dct_x = fftpack.dct(x)
+		dct_y = fftpack.dct(y)
+		dct_z = fftpack.dct(z)
+		dct_m = np.abs(fftpack.dct(m))
+		
+		features = []       
+	       	features.append(fftpack.idct(dct_x.tolist()[:dim]))
+		features.append(fftpack.idct(dct_y.tolist()[:dim]))
+		features.append(fftpack.idct(dct_z.tolist()[:dim]))       
+		X_matrix.append(features)
+        	if y_vect is not None:
+            		y_vect.append(tw[class_attr].iloc[0])       
+    
+    X_matrix = np.array(X_matrix) 
+           
+    if y_vect is None:
+        return X_matrix
+    else:
+        return X_matrix, y_vect
+
+
+def extract_3d_raw_dct_features(time_windows, feat_len, class_attr=None):
+    X_matrix = []
+    y_vect = None
+    if class_attr is not None:
+        y_vect = []
+
+    for tw in time_windows: 
+	if tw.shape[0] == feat_len:      
+		x = tw['x'].values
+		y = tw['y'].values
+		z = tw['z'].values
+		m = mag(x,y,z)
+		
+		dct_x = np.abs(fftpack.dct(x))
+		dct_y = np.abs(fftpack.dct(y))
+		dct_z = np.abs(fftpack.dct(z))
+		dct_m = np.abs(fftpack.dct(m))
+		
+		features = [] 
+		features.append(x)
+		features.append(y)
+		features.append(z)      
+	       	features.append(dct_x.tolist())
+		features.append(dct_y.tolist())
+		features.append(dct_z.tolist())       
+		X_matrix.append(features)
+        	if y_vect is not None:
+            		y_vect.append(tw[class_attr].iloc[0])       
+    
+    X_matrix = np.array(X_matrix) 
+           
+    if y_vect is None:
+        return X_matrix
+    else:
+        return X_matrix, y_vect
+
+
+
+
     
 def extract_dst_features(time_windows, class_attr, n_comps=90):
     X_matrix = []
@@ -493,30 +720,111 @@ def extract_dst_features(time_windows, class_attr, n_comps=90):
     return X_matrix, y_vect
     
     
-def extract_fft_features(time_windows, n_comps=48):
+def extract_fft_features(time_windows, class_attr, n_comps=48):
     X_train = []
+    if class_attr is not None:
+	y_train = []
     y_train = []
-    #n_comps = 50
+    l = len(time_windows[0])
     for w in time_windows:
-        x = w['x'].values
-        y = w['y'].values
-        z = w['z'].values
-        m = mag(x,y,z)
-        
-        fftx = np.abs(np.real(np.fft.fft(x)))
-        ffty = np.abs(np.real(np.fft.fft(y)))
-        fftz = np.abs(np.real(np.fft.fft(z)))  
-        fftm = np.abs(np.real(np.fft.fft(m)))       
-  
-        v = fftx[:n_comps]               
-        v = np.concatenate((v, ffty[:n_comps]))       
-        v = np.concatenate((v, fftz[:n_comps]))            
-        v = np.concatenate((v, fftm[:n_comps]))
-        
-        X_train.append(v)
-        y_train.append(w['class'].iloc[0])
+	if w.shape[0] == l:
+		x = w['x'].values
+		y = w['y'].values
+		z = w['z'].values
+		#m = mag(x,y,z)
+		
+		fftx = np.abs(np.real(np.fft.fft(x)))
+		ffty = np.abs(np.real(np.fft.fft(y)))
+		fftz = np.abs(np.real(np.fft.fft(z)))  
+		#fftm = np.abs(np.real(np.fft.fft(m)))       
+	  
+		v = fftx[:n_comps]               
+		v = np.concatenate((v, ffty[:n_comps]))       
+		v = np.concatenate((v, fftz[:n_comps]))            
+		#v = np.concatenate((v, fftm[:n_comps]))
+		
+		X_train.append(v)
+		if y_train is not None:
+		    y_train.append(w['class'].iloc[0])
     X_train = np.array(X_train)
-    return X_train, y_train
+    if y_train is None:
+  	return X_train
+    else:
+      	return X_train, y_train
+
+
+
+def extract_3d_fft_features(time_windows, feat_len, class_attr, n_comps=None):
+    X_matrix = []
+    if class_attr is not None:
+        y_vect = []
+    for w in time_windows:
+	if w.shape[0] == feat_len:
+		x = w['x'].values
+		y = w['y'].values
+		z = w['z'].values
+		m = mag(x,y,z)
+		dim = len(x)
+		if n_comps is not None:
+		    dim = n_comps
+		
+		fftx = np.real(np.fft.fft(x))
+		ffty = np.real(np.fft.fft(y))
+		fftz = np.real(np.fft.fft(z))  
+		fftm = np.abs(np.real(np.fft.fft(m)))       
+	  
+		features = []               
+		features.append(fftpack.irfft(fftx[:dim])) 
+		features.append(fftpack.irfft(ffty[:dim]))
+		features.append(fftpack.irfft(fftz[:dim]))      
+		
+		X_matrix.append(features)
+		if y_vect is not None:
+			y_vect.append(w['class'].iloc[0])
+
+    X_matrix = np.array(X_matrix)
+
+    if y_vect is None:
+        return X_matrix
+    else:
+        return X_matrix, y_vect
+
+
+def extract_3d_raw_fft_features(time_windows, feat_len, class_attr):
+    X_matrix = []
+    if class_attr is not None:
+        y_vect = []
+    for w in time_windows:
+	if w.shape[0] == feat_len:
+		x = w['x'].values
+		y = w['y'].values
+		z = w['z'].values
+		m = mag(x,y,z)
+		
+		fftx = np.abs(np.real(np.fft.fft(x)))
+		ffty = np.abs(np.real(np.fft.fft(y)))
+		fftz = np.abs(np.real(np.fft.fft(z)))  
+		fftm = np.abs(np.real(np.fft.fft(m)))       
+	  
+		features = []  
+		features.append(x)
+		features.append(y)
+		features.append(z)             
+		features.append(fftx) 
+		features.append(ffty)
+		features.append(fftz)      
+		
+		X_matrix.append(features)
+		if y_vect is not None:
+			y_vect.append(w['class'].iloc[0])
+
+    X_matrix = np.array(X_matrix)
+
+    if y_vect is None:
+        return X_matrix
+    else:
+        return X_matrix, y_vect
+
     
     
 def extract_fft_dct_features(time_windows, n_comps=48):

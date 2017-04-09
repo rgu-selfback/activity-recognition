@@ -7,8 +7,8 @@ import os
 import numpy as np
 import pandas as pd
 import sys
-import matplotlib
-import matplotlib.pyplot as plt
+#import matplotlib
+#import matplotlib.pyplot as plt
 import scipy
 from scipy import stats
 from scipy import fftpack
@@ -33,6 +33,13 @@ class ActivityRecogniser:
     amb_activities = ['walking', 'stairs', 'running']
     classifier = None
     scaler = None
+    #label_map = {'standing': 'inactive', 'sitting':'inactive', 'lying':'inactive', 'jogging':'active', 'walk_slow':'active', 'walk_mod':'active', 'walk_fast':'active', 'upstairs':'active', 'downstairs': 'active'}
+    label_map = {'sedentary':'inactive', 'walking':'active', 'stairs':'active', 'running':'active'}
+
+    feat_ext_method = {
+	'dct': su.extract_dct_features, 
+	'fft': su.extract_fft_features	
+    }
 
     def __init__(self, modelpath='model'):
         if modelpath is not None:
@@ -41,22 +48,27 @@ class ActivityRecogniser:
     def load_models(self, path):        
         self.classifier = joblib.load(path+'/classifier.pkl')
         self.scaler = joblib.load(path+'/scaler.pkl')
-    
-    
-    def train_model(self, train_data, samp_rate=100, window_length=10):
-        ########  Split train data into time windows  ############################################    
-        time_windows_train = []
-        for data in train_data:  
+
+    def extract_windows(self, dataset, samp_rate, window_length, overlap_ratio):
+	time_windows = []
+	for data in dataset:  
             #print len(data)
             for activity in data:
                 df = data[activity]                    
-                windows = su.split_windows(df, samp_rate, window_length, overlap_ratio=0.5)                    
-                time_windows_train.extend(windows)    
+                windows = su.split_windows(df, samp_rate, window_length, overlap_ratio=overlap_ratio)                    
+                time_windows.extend(windows) 
+	return time_windows   
+    
+    
+    def train_model(self, train_data, feat_len=48, samp_rate=100, window_length=10):
+        ########  Split train data into time windows  ############################################    
+        time_windows_train = self.extract_windows(train_data, samp_rate, window_length, 0.5)
+        
         
         #########  Extract Features  #############################################            
-        X_train, y_train = su.extract_dct_features(time_windows_train, class_attr='class')                 
-        #X_train, y_train = su.extract_features(time_windows_train)    
-        #n_features = X_train.shape[1]
+        X_train, y_train = self.feat_ext_method[self.params['feat_type']](time_windows_train, class_attr='class', n_comps=feat_len)                 
+        #X_train, y_train = su.extract_features(time_windows_train)
+	print X_train.shape
         
         #############  Scale Features  ######################################
         self.scaler = prep.StandardScaler()
@@ -68,8 +80,9 @@ class ActivityRecogniser:
         #X_train_norm = pca.fit_transform(X_train_norm)         
         
         ##########  Change Data Labels Granularity ##########################  
-        y_train = su.relabel(y_train) 
-                    
+        #y_train = su.relabel(y_train) 
+        self.train_labels = y_train
+          
         #########  Train Classifier  #########################################
         clf = SVC()            
         clf = clf.fit(X_train_norm, y_train) 
@@ -83,10 +96,15 @@ class ActivityRecogniser:
         joblib.dump(self.scaler, path+'/scaler.pkl')      
     
     
-    def predict_activities(self, data, samp_rate=100, window_length=10, format_result=True):
+    def predict_activities(self, test_data, feat_len=48,  samp_rate=100, window_length=10, format_result=True):
         if self.classifier is not None:
-            windows = su.split_windows(data, samp_rate, window_length, overlap_ratio=0.0)                            
-            X_test = su.extract_dct_features(windows)           
+            windows = self.extract_windows(test_data, samp_rate, window_length, 0.0)                            
+            X_test, y_test = self.feat_ext_method[self.params['feat_type']](windows, class_attr='class', n_comps=feat_len)
+	    #X_test, y_test = su.extract_features(windows)
+	    print X_test.shape
+
+	    #y_test = su.relabel(y_test)  
+	    self.test_labels = y_test        
             
             ##########  Scale Features #####################################
             X_test_norm = self.scaler.transform(X_test) 
@@ -149,25 +167,102 @@ class InitError(Exception):
     
 if __name__ == '__main__':
     
-    data_path = 'test_data/'
+    exp_name = '4class'
+    data_path = 'activity_data_wrist34/'
+    lh_path = 'activity_data_wrist34/'
     person_data = su.read_train_data(data_path) 
-    
-    instance_ids = person_data.keys()   
-    
-    ar = ActivityRecogniser('models')
-    #ar = ActivityRecogniser()
-    for ind in range(1):
-        test_case = instance_ids[ind]        
-        #print 'Test case: '+test_case
-        train_data = [value for key, value in person_data.items() if key not in [test_case]]
-        test_data = person_data[test_case]        
-        
-        #############  Train Model  ##########################################        
-        #ar.train_model(train_data)        
-        
-        ############  Classify Test Set  ####################################
-        for activity in test_data:  
-            #print '#################    '+activity+'    ###################'
-            df = test_data[activity]      
-            predictions = ar.predict_activities(df)
-            print predictions
+    lh_data = su.read_train_data(lh_path)
+    feat_types = ['dct']
+
+    results_path = 'results/'
+    results_filename = 'SVM_wrist34_results1.txt'
+    if os.path.exists(results_path+results_filename):
+    	results_file = open(results_path+results_filename, 'a+')
+    else:
+	results_file = open(results_path+results_filename, 'w+')    
+    instance_ids = person_data.keys() 
+    all_results = {}  
+    for var1 in feat_types:
+	    feat_results = []
+	    for var2 in range(len(instance_ids)):
+		    params = {
+		    'feat_type':var1,
+		    'feat_len': 80,
+		    'win_len': 3,
+		    'train_data': 'wrist',
+		    'test_data': 'wrist'
+		    }
+		    print params
+		    #ar = ActivityRecogniser('models')
+		    ar = ActivityRecogniser(None)
+		    ar.params = params
+		    y_true = []
+		    y_pred = []
+		    f1_scores = []
+		    
+		    np.random.seed(var2)
+		    #test_inds = np.random.choice(range(len(person_data)),8,replace=False)
+		    test_inds = [var2] 	   
+		    test_cases = [instance_ids[ind] for ind in test_inds]
+		    results_file.write(str(test_cases)+'\n')
+		    train_data = [value for key, value in person_data.items() if key not in test_cases]
+		    #train_data = [value for key, value in lh_data.items() if key not in test_cases]
+		    test_data = [value for key, value in person_data.items() if key in test_cases]
+		    #test_data = [value for key, value in lh_data.items() if key in test_cases]
+		    #test_cases.extend(test_cases)
+	    	    print 'Test cases: '+str(test_cases)
+
+
+		    '''for ind in range(1):
+			print 'Test instance: '+str(ind)
+			test_case = instance_ids[ind]        
+			#print 'Test case: '+test_case
+			train_data = [value for key, value in person_data.items() if key not in [test_case]]
+			test_data = person_data[test_case]'''        
+	
+		    #############  Train Model  ##########################################        
+		    ar.train_model(train_data, window_length=3, feat_len=params['feat_len'])        
+
+		    ############  Classify Test Set  ####################################
+		    user_y_true = []
+		    user_y_pred = []
+		    #for activity in test_data:  
+		    	#print '#################    '+activity+'    ###################'
+		    	#df = test_data[activity]      
+		    labels_pred = ar.predict_activities(test_data, window_length=3, feat_len=params['feat_len'], format_result=False) 
+		    labels_true = ar.test_labels
+		    
+		    #labels_pred = su.relabel(labels_pred, ar.label_map)
+		    #labels_true = su.relabel(ar.test_labels, ar.label_map)
+
+		    user_y_true.extend(labels_true)
+		    user_y_pred.extend(labels_pred)
+		    user_f1_score = su.f1_score(user_y_true, user_y_pred)    
+		    f1_scores.append(user_f1_score)
+		    y_true.extend(user_y_true)
+		    y_pred.extend(user_y_pred)
+			    #print y_pred
+		    results_file.write(str(params)+'\n')
+		    class_report = classification_report(y_true, y_pred)
+		    print class_report
+		    results_file.write(str(class_report)+'\n')
+		    f1 = f1_score(y_true, y_pred, average='micro')
+ 		    feat_results.append(f1)
+		    print 'f1 Score: %f\n\n'%f1
+		    results_file.write(str(f1)+'\n')
+
+		    out_file =  open('./results/'+exp_name+'.csv', 'w+')
+		    for val in f1_scores:
+			out_file.write(str(val)+'\n\n\n')
+		    out_file.close()
+	    all_results[var1] = feat_results
+    df = pd.DataFrame(all_results)
+    df.to_csv('./results/'+data_path+'.csv', index=False)
+    results_file.close()
+
+
+
+
+
+
+
