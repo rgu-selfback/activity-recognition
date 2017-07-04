@@ -1,2 +1,2 @@
 # activity-recognition
-This repository contains python code for human activity recognition. 
+This repository contains python code for human activity recognition. The files selfback_utils.py, detect_peaks.py and selfback_stepcounter.py are required files tha tneed to be downloaded into your working directory. In additon, you will need to have the python libraries numpy, scipy, pandas and scikit-learn installed. For running the deep learning code, you will also need to have theano, lasagne, tensorflow and keras installed and configured on your machine.
